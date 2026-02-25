@@ -89,7 +89,7 @@ if uploaded_file:
             # --- EKRANA BASMA VE EXCEL ---
             tabs = st.tabs(list(tum_sonuclari.keys()))
             salon_dfs = {}
-            for i, (s_adi, ogrenciler) in enumerate(tum_sonuclari.items()):
+            tabs = st.tabs(list(tum_sonuclar.keys()))
                 with tabs[i]:
                     if ogrenciler:
                         s_df = pd.DataFrame(ogrenciler)
