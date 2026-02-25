@@ -5,7 +5,7 @@ import io
 
 st.set_page_config(page_title="Kelebek Sınav Sistemi", layout="wide")
 
-st.title("🦋 Kelebek Sınav Sistemi (Kademeli Dağıtım: 5-6 ve 7-8)")
+st.title("🦋 Kelebek Sınav Sistemi (Kademeli Dağıtım)")
 st.info("Bu sürüm 5-6. sınıfları kendi içinde, 7-8. sınıfları kendi içinde dağıtır.")
 
 st.sidebar.header("1. Ayarlar")
@@ -18,13 +18,11 @@ if uploaded_file:
     df = pd.read_excel(uploaded_file)
     df.columns = [str(c).strip() for c in df.columns]
     
-    # Sınıf sütununu bul
     sinif_col = next((c for c in ['Sınıf', 'Sınıfı', 'Sinif', 'SINIF', 'SINIF-ŞUBE'] if c in df.columns), None)
 
     if sinif_col is None:
         st.error(f"Excel'de 'Sınıf' sütunu bulunamadı!")
     else:
-        # --- GRUPLANDIRMA MANTIĞI ---
         # Sınıfın ilk karakterine bakarak 5-6 ve 7-8 ayrımı yapıyoruz
         df['Grup'] = df[sinif_col].apply(lambda x: "5-6" if str(x)[0] in ['5', '6'] else "7-8")
         
@@ -36,7 +34,6 @@ if uploaded_file:
 
         if st.button("Kademeli Dağıtımı Başlat"):
             def kelebek_karistir(veriseti):
-                """Bir grubu kendi içinde şubelere göre karıştırır."""
                 subeler = veriseti[sinif_col].unique()
                 gruplar = {s: veriseti[veriseti[sinif_col] == s].to_dict('records') for s in subeler}
                 karma = []
@@ -48,12 +45,9 @@ if uploaded_file:
                             karma.append(gruplar[s].pop(0))
                 return karma
 
-            # Her grubu kendi içinde karıştır
             karma_56 = kelebek_karistir(grup_56)
             karma_78 = kelebek_karistir(grup_78)
 
-            # --- SALONLARI PAYLAŞTIR ---
-            # Toplam öğrenciye göre 5-6 grubu kaç salon kaplıyor hesapla
             oran_56 = len(grup_56) / len(df)
             salon_siniri = round(salon_sayisi * oran_56)
             
@@ -67,10 +61,7 @@ if uploaded_file:
                 for ogrenci in ogrenciler:
                     uygun = [s for s in salon_adlari if len(doluluk[s]) < varsayilan_kapasite]
                     if not uygun: break
-                    
-                    # Denge için en boş salonu seç
                     uygun.sort(key=lambda x: len(doluluk[x]))
-                    
                     secilen = None
                     for s in uygun:
                         if not doluluk[s] or doluluk[s][-1][sinif_col] != ogrenci[sinif_col]:
@@ -83,26 +74,32 @@ if uploaded_file:
             sonuc_56 = dagit(karma_56, salonlar_56)
             sonuc_78 = dagit(karma_78, salonlar_78)
             
-            # Sonuçları birleştir
             tum_sonuclar = {**sonuc_56, **sonuc_78}
             
-            # --- EKRANA BASMA VE EXCEL ---
-            tabs = st.tabs(list(tum_sonuclari.keys()))
-            salon_dfs = {}
-            tabs = st.tabs(list(tum_sonuclar.keys()))
-                with tabs[i]:
-                    if ogrenciler:
-                        s_df = pd.DataFrame(ogrenciler)
-                        s_df.insert(0, 'Sıra No', range(1, len(s_df) + 1))
-                        st.dataframe(s_df)
-                        salon_dfs[s_adi] = s_df
-                    else:
-                        st.warning("Bu salon boş kaldı.")
+            # Tabları oluşturma ve veri gösterme kısmı (Girintiler düzeltildi)
+            if tum_sonuclar:
+                tabs = st.tabs(list(tum_sonuclar.keys()))
+                salon_dfs = {}
+                for i, (s_adi, ogrenciler) in enumerate(tum_sonuclar.items()):
+                    with tabs[i]:
+                        if ogrenciler:
+                            s_df = pd.DataFrame(ogrenciler)
+                            s_df.insert(0, 'Sıra No', range(1, len(s_df) + 1))
+                            st.dataframe(s_df, use_container_width=True)
+                            salon_dfs[s_adi] = s_df
+                        else:
+                            st.warning(f"{s_adi} şu an boş.")
 
-            if salon_dfs:
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    for s_adi, s_df in salon_dfs.items():
-                        s_df.to_excel(writer, sheet_name=s_adi, index=False)
-                
-                st.sidebar.download_button("📥 Kademeli Listeyi İndir", output.getvalue(), "kelebek_kademeli.xlsx")
+                if salon_dfs:
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        for s_adi, s_df in salon_dfs.items():
+                            s_df.to_excel(writer, sheet_name=s_adi, index=False)
+                    
+                    st.sidebar.markdown("---")
+                    st.sidebar.download_button(
+                        label="📥 Kademeli Listeyi Excel İndir",
+                        data=output.getvalue(),
+                        file_name="kelebek_kademeli_liste.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
