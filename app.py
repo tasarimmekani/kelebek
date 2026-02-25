@@ -6,7 +6,7 @@ import io
 st.set_page_config(page_title="Kelebek Sınav Sistemi", layout="wide")
 
 st.title("🦋 Kelebek Sınav Sistemi (Kademeli Dağıtım)")
-st.info("Bu sürüm 5-6. sınıfları kendi içinde, 7-8. sınıfları kendi içinde dağıtır.")
+st.info("Bu sistem 5-6. sınıfları ayrı, 7-8. sınıfları ayrı salonlara dağıtır ve çakışmayı engeller.")
 
 st.sidebar.header("1. Ayarlar")
 uploaded_file = st.sidebar.file_uploader("Öğrenci Listesi (Excel)", type=['xlsx'])
@@ -23,9 +23,8 @@ if uploaded_file:
     if sinif_col is None:
         st.error(f"Excel'de 'Sınıf' sütunu bulunamadı!")
     else:
-        # Sınıfın ilk karakterine bakarak 5-6 ve 7-8 ayrımı yapıyoruz
+        # 5-6 ve 7-8 Ayrımı
         df['Grup'] = df[sinif_col].apply(lambda x: "5-6" if str(x)[0] in ['5', '6'] else "7-8")
-        
         grup_56 = df[df['Grup'] == "5-6"].copy()
         grup_78 = df[df['Grup'] == "7-8"].copy()
         
@@ -48,13 +47,14 @@ if uploaded_file:
             karma_56 = kelebek_karistir(grup_56)
             karma_78 = kelebek_karistir(grup_78)
 
-            oran_56 = len(grup_56) / len(df)
+            # Salon Paylaşımı
+            oran_56 = len(grup_56) / len(df) if len(df) > 0 else 0.5
             salon_siniri = round(salon_sayisi * oran_56)
             
             salonlar_56 = [f"Salon {i+1}" for i in range(salon_siniri)]
             salonlar_78 = [f"Salon {i+1}" for i in range(salon_siniri, int(salon_sayisi))]
             
-            st.write(f"📍 {len(salonlar_56)} Salon 5-6 grubuna, {len(salonlar_78)} Salon 7-8 grubuna ayrıldı.")
+            st.success(f"📍 {len(salonlar_56)} Salon (5-6) için, {len(salonlar_78)} Salon (7-8) için ayrıldı.")
 
             def dagit(ogrenciler, salon_adlari):
                 doluluk = {s: [] for s in salon_adlari}
@@ -62,21 +62,24 @@ if uploaded_file:
                     uygun = [s for s in salon_adlari if len(doluluk[s]) < varsayilan_kapasite]
                     if not uygun: break
                     uygun.sort(key=lambda x: len(doluluk[x]))
+                    
                     secilen = None
                     for s in uygun:
                         if not doluluk[s] or doluluk[s][-1][sinif_col] != ogrenci[sinif_col]:
                             secilen = s
                             break
                     if not secilen: secilen = uygun[0]
-                    doluluk[secilen].append(ogrenci)
+                    
+                    # Salon bilgisini öğrenciye ekle
+                    ogrenci_kopya = ogrenci.copy()
+                    ogrenci_kopya['Sınav Salonu'] = secilen
+                    doluluk[secilen].append(ogrenci_kopya)
                 return doluluk
 
             sonuc_56 = dagit(karma_56, salonlar_56)
             sonuc_78 = dagit(karma_78, salonlar_78)
-            
             tum_sonuclar = {**sonuc_56, **sonuc_78}
             
-            # Tabları oluşturma ve veri gösterme kısmı (Girintiler düzeltildi)
             if tum_sonuclar:
                 tabs = st.tabs(list(tum_sonuclar.keys()))
                 salon_dfs = {}
@@ -84,11 +87,12 @@ if uploaded_file:
                     with tabs[i]:
                         if ogrenciler:
                             s_df = pd.DataFrame(ogrenciler)
-                            s_df.insert(0, 'Sıra No', range(1, len(s_df) + 1))
+                            if 'Sıra No' not in s_df.columns:
+                                s_df.insert(0, 'Sıra No', range(1, len(s_df) + 1))
                             st.dataframe(s_df, use_container_width=True)
                             salon_dfs[s_adi] = s_df
                         else:
-                            st.warning(f"{s_adi} şu an boş.")
+                            st.warning(f"{s_adi} boş kaldı.")
 
                 if salon_dfs:
                     output = io.BytesIO()
@@ -98,8 +102,8 @@ if uploaded_file:
                     
                     st.sidebar.markdown("---")
                     st.sidebar.download_button(
-                        label="📥 Kademeli Listeyi Excel İndir",
+                        label="📥 Mükemmel Listeyi İndir",
                         data=output.getvalue(),
-                        file_name="kelebek_kademeli_liste.xlsx",
+                        file_name="kelebek_kademeli_final.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
